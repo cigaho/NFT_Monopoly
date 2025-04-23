@@ -1,0 +1,26 @@
+{
+  "name": "monopoly-nft-game",
+  "version": "1.0.0",
+  "main": "index.js",
+  "license": "MIT",
+  "scripts": {
+    "test": "hardhat test",
+    "start": "hardhat node",
+    "deploy": "hardhat run scripts/deploy.js --network localhost"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-chai-matchers": "^1.0.5",
+    "@nomiclabs/hardhat-ethers": "^2.2.3",
+    "@nomiclabs/hardhat-etherscan": "^3.1.7",
+    "@nomiclabs/hardhat-waffle": "^2.0.6",
+    "@openzeppelin/contracts": "^4.9.3",
+    "@types/chai": "^4.3.5",
+    "@types/mocha": "^10.0.2",
+    "chai": "^4.3.7",
+    "dotenv": "^16.3.1",
+    "ethers": "^5.8.0",
+    "hardhat": "^2.12.7",
+    "hardhat-contract-sizer": "^2.8.0",
+    "mocha": "^10.2.0"
+  }
+}
