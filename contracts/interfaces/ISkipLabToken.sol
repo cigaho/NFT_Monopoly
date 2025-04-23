@@ -2,8 +2,9 @@
 pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/access/IAccessControl.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
-interface ISkipLabToken is IAccessControl {
+interface ISkipLabToken is IERC20, IAccessControl {
     // 权限管理
     function GAME_ROLE() external view returns (bytes32);
     function grantRole(bytes32 role, address account) external;
