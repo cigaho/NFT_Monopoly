@@ -2,17 +2,17 @@
 const { ethers } = require("hardhat");
 
 async function main() {
-  // 获取合约工厂（新增Board）
+  // Obtain new contracts（new Board）
   const SkipLabToken = await ethers.getContractFactory("SkipLabToken");
   const MonopolyProperty = await ethers.getContractFactory("MonopolyProperty");
   const Board = await ethers.getContractFactory("Board");
   const MonopolyGame = await ethers.getContractFactory("MonopolyGame");
 
-  // 获取部署者账户
+  // obtain deployer account
   const [deployer] = await ethers.getSigners();
   console.log("Deploying contracts with the account:", deployer.address);
 
-  // 部署顺序：代币 -> 房产 -> 面板 -> 游戏
+  // deploy sequence: tokens -> property -> board -> game
   console.log("\nStep 1/4: Deploying SkipLabToken...");
   const token = await SkipLabToken.deploy(ethers.utils.parseEther("1000000"));
   await token.deployed();
@@ -33,7 +33,7 @@ async function main() {
   );
   await game.deployed();
 
-  // 权限配置流程
+  // access deployment
   console.log("\nConfiguring permissions:");
   console.log("- Transferring property ownership to game...");
   await property.transferOwnership(game.address);
@@ -48,11 +48,11 @@ async function main() {
   const GAME_ROLE = await token.GAME_ROLE();
   await token.grantRole(GAME_ROLE, game.address);
 
-  // 数据初始化
+  // data initialization
   console.log("\nInitializing game data:");
   await initializeDefaultProperties(game);
 
-  // 部署验证
+  // deploy verification
   console.log("\nVerification Checklist:");
   console.log("✓ All contracts deployed successfully");
   console.log("✓ Property ownership transferred");
@@ -60,7 +60,7 @@ async function main() {
   console.log("✓ Game role configured in token contract");
   console.log("✓ Default properties initialized");
 
-  // 最终输出
+  // result output
   console.log("\nFinal Deployment Summary:");
   console.log("==================================");
   console.log(`SkipLabToken (ERC20):     ${token.address}`);
@@ -77,7 +77,7 @@ async function initializeDefaultProperties(gameContract) {
       price: ethers.utils.parseEther("60"),
       rent: ethers.utils.parseEther("2"),
       color: "brown",
-      position: 1 // 新增位置参数
+      position: 1 
     },
     {
       name: "Baltic Avenue",
@@ -86,7 +86,6 @@ async function initializeDefaultProperties(gameContract) {
       color: "brown",
       position: 3
     },
-    // 其他房产配置...
   ];
 
   console.log(`Initializing ${propertyConfig.length} properties...`);
@@ -98,7 +97,7 @@ async function initializeDefaultProperties(gameContract) {
         prop.price,
         prop.rent,
         prop.color,
-        prop.position // 新增参数
+        prop.position 
       );
       await tx.wait();
       console.log(`✓ ${prop.name} @ position ${prop.position}`);
@@ -113,4 +112,5 @@ main()
   .catch(error => {
     console.error("Deployment Failed:", error);
     process.exit(1);
+
   });
