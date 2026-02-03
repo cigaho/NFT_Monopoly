@@ -1,103 +1,153 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 
-describe("Monopoly Game", function () {
-  let skipLabToken;
-  let monopolyProperty;
-  let monopolyGame;
-  let owner;
-  let player1;
-  let player2;
+describe("MonopolyGame", function () {
+  let game, property, board;
+  let owner, player1, player2;
 
-  before(async function () {
+  before(async () => {
     [owner, player1, player2] = await ethers.getSigners();
 
-    // Deploy $SKIPLAB Token (ERC20)
-    const SkipLabToken = await ethers.getContractFactory("SkipLabToken");
-    skipLabToken = await SkipLabToken.deploy(ethers.utils.parseEther("1000000"));
-    await skipLabToken.deployed();
+    // deploy the board
+    const Board = await ethers.getContractFactory("Board");
+    board = await Board.deploy();
+    await board.waitForDeployment();
+    
 
-    // Deploy Property NFTs (ERC721)
-    const MonopolyProperty = await ethers.getContractFactory("MonopolyProperty");
-    monopolyProperty = await MonopolyProperty.deploy();
-    await monopolyProperty.deployed();
-
-    // Deploy Main Game Contract
-    const MonopolyGame = await ethers.getContractFactory("MonopolyGame");
-    monopolyGame = await MonopolyGame.deploy(skipLabToken.address, monopolyProperty.address);
-    await monopolyGame.deployed();
-
-    // Transfer NFT contract ownership to the game
-    await monopolyProperty.transferOwnership(monopolyGame.address);
+    //deploy property
+    const Property = await ethers.getContractFactory("MonopolyProperty");
+    property = await Property.deploy();
+    await property.waitForDeployment();
+    
+    // deploy game
+    const Game = await ethers.getContractFactory("MonopolyGame");
+    game = await Game.deploy(
+      [player1.address, player2.address],
+      board.target,
+      property.target
+    );
+    await game.waitForDeployment();
+    await (await property.setGame(game.target)).wait();
   });
 
-  describe("$SKIPLAB Token (ERC20)", function () {
-    it("Should mint initial supply to owner", async function () {
-      expect(await skipLabToken.balanceOf(owner.address)).to.equal(ethers.utils.parseEther("1000000"));
-    });
-
-    it("Should allow transfers between players", async function () {
-      await skipLabToken.transfer(player1.address, ethers.utils.parseEther("100"));
-      expect(await skipLabToken.balanceOf(player1.address)).to.equal(ethers.utils.parseEther("100"));
-    });
+  //Test 1: initialize user
+  it("Should initialize users properly", async () => {
+    const p1 = await game.players(0);
+    const p2 = await game.players(1);
+    expect(p1.addr).to.equal(player1.address);
+    expect(p2.addr).to.equal(player2.address);
+    
+    // check initial balance
+    expect(await game.getBalance(player1.address)).to.equal(4000);
+    expect(await game.getBalance(player2.address)).to.equal(4000);
   });
 
-  describe("Property NFTs (ERC721)", function () {
-    it("Should let the game contract mint properties", async function () {
-      await monopolyGame.connect(owner).addProperty("Boardwalk", ethers.utils.parseEther("400"), ethers.utils.parseEther("50"), "blue");
-      expect(await monopolyProperty.ownerOf(1)).to.equal(monopolyGame.address);
-    });
-
-    it("Should store property metadata correctly", async function () {
-      const property = await monopolyProperty.getPropertyDetails(1);
-      expect(property.name).to.equal("Boardwalk");
-      expect(property.price).to.equal(ethers.utils.parseEther("400"));
-    });
+  //Test 2: handle property purchase properly
+  it("Should handle property purchase properly", async () => {
+    // Setup Player
+    await (await game.debugForceSetup(
+      player1.address,
+      5,     
+      2000,  
+      true   
+    ));
+    
+    // purchase
+    await (await game.connect(player1).buyProperty());
+    
+    // Outcomes
+    expect(await property.ownerOf(5)).to.equal(player1.address);
+    expect(await game.currentPlayer()).to.equal(1);
+    expect(await game.getBalance(player1.address)).to.equal(1450); 
+    expect(await game.getPrice(6)).to.equal(400);
   });
 
-  describe("Game Mechanics", function () {
-    before(async function () {
-      // Players join the game
-      await monopolyGame.connect(player1).joinGame();
-      await monopolyGame.connect(player2).joinGame();
-    });
+  //Test 3: Rent or tax deduction
+  it("Should handle rent and tax peyment properly", async () => {
+    // Set up player1 property
+    await (await game.debugForceSetup(
+      player1.address,
+      5,
+      2000,
+      false
+    ));
+    
+    // Set up player 2
+    await (await game.debugForceSetup(
+      player2.address,
+      5,     
+      2000,
+      true
+    ));
 
-    it("Should give starting money to new players", async function () {
-      expect(await skipLabToken.balanceOf(player1.address)).to.equal(ethers.utils.parseEther("1500"));
-    });
-
-    it("Should allow property purchases", async function () {
-      await skipLabToken.connect(player1).approve(monopolyGame.address, ethers.utils.parseEther("400"));
-      await monopolyGame.connect(player1).buyProperty(1);
-      expect(await monopolyProperty.ownerOf(1)).to.equal(player1.address);
-    });
-
-    it("Should enforce rent payments", async function () {
-      const initialBalance = await skipLabToken.balanceOf(player2.address);
-      await skipLabToken.connect(player2).approve(monopolyGame.address, ethers.utils.parseEther("50"));
-      await monopolyGame.connect(player2).payRent(1);
-      expect(await skipLabToken.balanceOf(player2.address)).to.equal(initialBalance.sub(ethers.utils.parseEther("50")));
-      expect(await skipLabToken.balanceOf(player1.address)).to.equal(ethers.utils.parseEther("1100"));
-    });
-
-    it("Should track player movement", async function () {
-      await monopolyGame.connect(player1).movePlayer(5);
-      const player = await monopolyGame.players(player1.address);
-      expect(player.position).to.equal(5);
-    });
+    // trigger rent transaction
+    const beforeBalance = await game.getBalance(player2.address);
+    await (await game.connect(player2).debugMovePlayer(player2.address, 0));
+    
+    // verify outcome
+    expect(await game.getBalance(player2.address)).to.equal(1700);
+    expect(await game.getBalance(player1.address)).to.equal(2300);
   });
 
-  describe("Edge Cases", function () {
-    it("Should prevent buying owned properties", async function () {
-      await expect(
-        monopolyGame.connect(player2).buyProperty(1)
-      ).to.be.revertedWith("Property not available");
-    });
 
-    it("Should prevent rent payments to self", async function () {
-      await expect(
-        monopolyGame.connect(player1).payRent(1)
-      ).to.be.revertedWith("Invalid rent payment");
-    });
+  //Test 4: property upgrade
+  it("Should handle property upgrade properly", async () => {
+    await (await game.debugForceSetup(
+      player1.address,
+      5,     
+      2000, 
+      true   
+    ));
+    
+    // upgrade
+    await (await game.connect(player1).upgradeProperty());
+    
+    // verify
+    expect(await game.getRentPrice(5)).to.equal(600);
+    expect(await game.getLevel(5)).to.equal(2);
+    expect(await game.getBalance(player1.address)).to.equal(1725);
+    expect(await game.getAsset(player1.address)).to.equal(825);
+});
+
+//Test 5: check reward 
+it("Should offer reward properly", async () => {
+    await (await game.debugForceSetup(
+      player1.address,
+      19,     
+      2000,  
+      true   
+    ));
+    
+    // pass the start point
+    await (await game.connect(player1).rollDice());
+
+    // verify balance
+    expect(await game.getBalance(player1.address)).to.equal(2500);
+});
+
+
+//Test 6: handle game end
+  it("Should end game when player went bankrupt", async () => {
+    await (await game.debugForceSetup(
+      player1.address,
+      19,     
+      2000,  
+      true   
+    ));
+    await (await game.connect(player1).buyProperty());
+
+    //Player 2, about to go bankrupt
+    await (await game.debugForceSetup(
+      player2.address,
+      18, 
+      1,    
+      true
+    ));
+
+    // trigger rent payment
+    await (await game.connect(player2).debugMovePlayer(player2.address, 1));
+    
+    // verify game end
+    expect(await game.gameState()).to.equal(1); // 1 = GameState.ENDED
   });
 });

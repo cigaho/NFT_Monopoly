@@ -1,98 +1,114 @@
-// SPDX-License-Identifier: UNLICENSED
+// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import "@openzeppelin/contracts/access/AccessControl.sol";
-import "./interfaces/IMonopolyProperty.sol";
-import "./interfaces/ISkipLabToken.sol";
-
-contract Board is AccessControl {
-    bytes32 public constant GAME_CONTRACT = keccak256("GAME_CONTRACT");
+contract Board {
+    //The struct defines the buyPrice, current rentPrice & property level for the land.
+    struct LandPrice {
+        uint256 buyPrice;
+        uint256 rentPrice;
+        uint256 level;
+    }
     
-    enum TileType { START, PROPERTY, CHANCE, COMMUNITY_CHEST, TAX, JAIL }
+    LandPrice[20] public basePrices;
+    address public owner;
+    mapping(uint256 => LandPrice) private _customPrices;
+    mapping(uint256 => string) private _landNames;
 
-    struct Tile {
-        TileType tileType;
-        string name;
-        uint256 value;
-        uint256 linkedPropertyId;
+    //construct the initial board
+    constructor() {
+        owner = msg.sender;
+        initializeBasePrices();
+        _initializeDefaultNames();
     }
 
-    Tile[40] public tiles;
-    IMonopolyProperty public propertyContract;
-    ISkipLabToken public tokenContract;
-
-    constructor(address _propertyAddress, address _tokenAddress) {
-        _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
-        _setupRole(DEFAULT_ADMIN_ROLE, address(this));
-        
-        propertyContract = IMonopolyProperty(_propertyAddress);
-        tokenContract = ISkipLabToken(_tokenAddress);
-        _initializeBoard();
+    //set initial landprice, rentprice and level
+    function initializeBasePrices() private {
+        basePrices[0] = LandPrice(200, 100, 1);
+        basePrices[1] = LandPrice(500, 2010, 1);
+        basePrices[2] = LandPrice(350, 150, 1);
+        basePrices[3] = LandPrice(700, 300, 1);
+        basePrices[4] = LandPrice(500, 250, 1);
+        basePrices[5] = LandPrice(550, 300, 1);
+        basePrices[6] = LandPrice(400, 150, 1);
+        basePrices[7] = LandPrice(200, 100, 1);
+        basePrices[8] = LandPrice(650, 250, 1);
+        basePrices[9] = LandPrice(300, 100, 1);
+        basePrices[10] = LandPrice(300, 100, 1);
+        basePrices[11] = LandPrice(600, 250, 1);
+        basePrices[12] = LandPrice(350, 200, 1);
+        basePrices[13] = LandPrice(200, 100, 1);
+        basePrices[14] = LandPrice(250, 150, 1);
+        basePrices[15] = LandPrice(450, 200, 1);
+        basePrices[16] = LandPrice(600, 300, 1);
+        basePrices[17] = LandPrice(300, 150, 1);
+        basePrices[18] = LandPrice(650, 350, 1);
+        basePrices[19] = LandPrice(400, 200, 1);
     }
 
-    function grantGameRole(address game) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        require(game != address(0), "Invalid game address");
-        _grantRole(GAME_CONTRACT, game);
-        
-        // 同步代币合约权限
-        bytes32 gameRole = tokenContract.GAME_ROLE();
-        tokenContract.grantRole(gameRole, game);
+    //Set property name
+    function _initializeDefaultNames() private {
+        _landNames[0] = "Start";
+        _landNames[1] = "HKU";
+        _landNames[2] = "Exhibition Center";
+        _landNames[3] = "Central";
+        _landNames[4] = "Admiralty";
+        _landNames[5] = "Ocean Park";
+        _landNames[6] = "South Horizons";
+        _landNames[7] = "Tax Office";
+        _landNames[8] = "Causeway Bay";
+        _landNames[9] = "North Point";
+        _landNames[10] = "City One";
+        _landNames[11] = "Racecourse";
+        _landNames[12] = "CUHK";
+        _landNames[13] = "Austin";
+        _landNames[14] = "Olympic";
+        _landNames[15] = "World-Expo";
+        _landNames[16] = "Airport";
+        _landNames[17] = "Tax Office";
+        _landNames[18] = "Disney Resort";
+        _landNames[19] = "Kennedy Town";
     }
 
-    function _initializeBoard() private {
-        // 初始化所有40个板块（示例部分数据）
-        tiles[0] = Tile(TileType.START, "Start", 200, 0);
-        tiles[1] = Tile(TileType.PROPERTY, "HKU", 60, 1);
-        tiles[2] = Tile(TileType.COMMUNITY_CHEST, "Community Chest", 0, 0);
-        tiles[3] = Tile(TileType.PROPERTY, "Central", 60, 2);
-        tiles[4] = Tile(TileType.TAX, "Income Tax", 200, 0);
-        tiles[5] = Tile(TileType.PROPERTY, "Station", 200, 3);
-        // ... 其他板块初始化
+    //update new price and new level
+    function upgrade(uint256 position) external {
+        require(position < 20, "Invalid position");
+        basePrices[position].rentPrice *= 2;
+        basePrices[position].level += 1;
     }
 
-    function handleLandingEffect(uint256 position, address player) external onlyRole(GAME_CONTRACT) {
-        require(position < 40, "Invalid position");
-        
-        Tile memory tile = tiles[position];
-        
-        if (tile.tileType == TileType.PROPERTY) {
-            _handlePropertyLanding(tile.linkedPropertyId, player);
-        } else if (tile.tileType == TileType.CHANCE) {
-            _handleChanceCard(player);
-        } else if (tile.tileType == TileType.COMMUNITY_CHEST) {
-            _handleCommunityChest(player);
+    //obtain buyprice for vacant property
+    function getPrice(uint256 position) external view returns (uint256) {
+        if (_customPrices[position].buyPrice > 0) {
+            return _customPrices[position].buyPrice;
         }
+        return basePrices[position % 20].buyPrice;
     }
 
-    function _handlePropertyLanding(uint256 propertyId, address player) private {
-        address owner = propertyContract.ownerOf(propertyId);
-        if (owner == address(0)) {
-            uint256 price = propertyContract.getPropertyPrice(propertyId);
-            require(
-                tokenContract.safeTransfer(player, address(this), price),
-                "Payment failed"
-            );
-            propertyContract.safeTransferFrom(address(this), player, propertyId);
-        } else {
-            _collectRent(propertyId, player, owner);
+    //obtain rentprice for property at position
+    function getRentPrice(uint256 position) external view returns (uint256) {
+        if (_customPrices[position].rentPrice > 0) {
+            return _customPrices[position].rentPrice;
         }
+        return basePrices[position % 20].rentPrice;
     }
 
-    function _collectRent(uint256 propertyId, address payer, address owner) private {
-        uint256 rent = propertyContract.getCurrentRent(propertyId);
-        require(rent > 0, "Invalid rent amount");
-        require(tokenContract.safeTransfer(payer, owner, rent), "Rent failed");
+    //obtain property name
+    function getLandName(uint256 position) external view returns (string memory) {
+        require(position < 20, "Invalid position");
+        return _landNames[position];
     }
 
-    function _handleChanceCard(address player) private {
-        tokenContract.gameMint(player, 100 * 10**18);
+    //obtain property level
+    function getLevel(uint256 position) external view returns (uint256) {
+        return _customPrices[position].level > 0 
+            ? _customPrices[position].level 
+            : basePrices[position % 20].level;
     }
 
-    function _handleCommunityChest(address player) private {
-        tokenContract.gameMint(player, 50 * 10**18);
+    //restricted certain function to be called by property owner only
+    modifier onlyOwner() {
+        require(msg.sender == owner, "Only owner");
+        _;
     }
 
-    function supportsInterface(bytes4 interfaceId) public view override(AccessControl) returns (bool) {
-        return super.supportsInterface(interfaceId);
-    }
 }
