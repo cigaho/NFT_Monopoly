@@ -34,20 +34,19 @@ contract Board is AccessControl {
         require(game != address(0), "Invalid game address");
         _grantRole(GAME_CONTRACT, game);
         
-        // 同步代币合约权限
+        // update token contract access
         bytes32 gameRole = tokenContract.GAME_ROLE();
         tokenContract.grantRole(gameRole, game);
     }
 
     function _initializeBoard() private {
-        // 初始化所有40个板块（示例部分数据）
+        // initialize board
         tiles[0] = Tile(TileType.START, "Start", 200, 0);
         tiles[1] = Tile(TileType.PROPERTY, "HKU", 60, 1);
         tiles[2] = Tile(TileType.COMMUNITY_CHEST, "Community Chest", 0, 0);
         tiles[3] = Tile(TileType.PROPERTY, "Central", 60, 2);
         tiles[4] = Tile(TileType.TAX, "Income Tax", 200, 0);
         tiles[5] = Tile(TileType.PROPERTY, "Station", 200, 3);
-        // ... 其他板块初始化
     }
 
     function handleLandingEffect(uint256 position, address player) external onlyRole(GAME_CONTRACT) {
@@ -95,4 +94,5 @@ contract Board is AccessControl {
     function supportsInterface(bytes4 interfaceId) public view override(AccessControl) returns (bool) {
         return super.supportsInterface(interfaceId);
     }
+
 }
